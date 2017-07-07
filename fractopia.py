@@ -4,68 +4,18 @@ import time
 from py2neo import Graph, Node, Relationship, NodeSelector
 import uuid
 import inspect
-#import neo4j.v1
-#from neo4j.v1 import basic_auth
-
-
-
-
-#fractalia = py2neo.Graph(password="plaintextpwd")
-"""
-
-class Fractalia():
-    graph = py2neo.Graph(password="plaintextpwd")
-    node = py2neo.Node()
-    relationship = py2neo.Relationship()
-
-
-
-fractalia = Fractalia()
-fg = fractalia.graph
-# timestamp ->time.mktime(datetime.now().timetuple()))
-"""
-
 
 
 graph = Graph(password="plaintextpwd")
 selector = NodeSelector(graph)
 
 
-class Tests():
-
-
-    @staticmethod
-    def cru():
-        fracti = Fracti("Tester","content",other_labels=["Test","Label2"])
-        fracti.insert_db()
-        print fracti.fetch_db()
-        fracti.content = "other content"
-        print fracti.update_db()
-        Fracti.find_db(fracti.id_)
-
-
-    @staticmethod
-    def actor_con():
-        actor = Actor(1,"Primeiro actor")
-        actor.insert_db()
-        BasicFractopus.initialize_main_node()
-        actor_bf = actor.connect_extension(1)
-        actor_bf.create_content(content="conteudo legal", name="nomezin")
-        actor_bf.create_directory("pasta legal", "nomezera")
-
-
-
-
-
-
-
-
 
 class Fracti(object):
     """ Representation of a node in the database. Everything is stored in fractis"""
-    def __init__(self, creator_id, content="", name="", other_labels=[], id_= str(uuid.uuid4()), acess_keys="public-rw", timestamp=time.time()):
-        self.id_ = id_
-        self.name = name
+    def __init__(self, creator_id, content="", name="No name", other_labels=[],id_=None, acess_keys="public-rw", timestamp=time.time()):
+        self.id_ = str(uuid.uuid4()) if id_ is None else id_
+        self.name = name  #gives error because of empty string name property
         self.other_labels = other_labels
         self.content = content
         self.acess_keys = acess_keys
@@ -73,25 +23,30 @@ class Fracti(object):
         self.creator_id = creator_id
 
 
-
-
     @staticmethod
     def find_db(id_, label="Fracti"):
-        """ find a node in de database based on id"""
+        """ returns a node in database based on id"""
         fracti = selector.select(label, id=id_)
         fracti = fracti.first()
-        return fracti
+        if fracti:
+            return fracti
+        else:
+            return None
+
 
     @classmethod
-    def get_instance(cls,ids=None, node=None):
-        """given a node object or an ID, creates a instance of the class to manage methods"""
+    def get_instance(cls, ob):
+        """given a node object or an ID, returns equivalent class instance """
 
         class_ = cls
 
-        if node:
-            fracti = node
+        if isinstance(ob, Node):
+            fracti = ob
         else:
-            fracti = Fracti.find_db(ids)
+            if cls.find_db(ob) is None:
+                raise Exception("Wrong id format or not existent node")
+            else:
+                fracti = cls.find_db(ob)
 
         if fracti.has_label("Extension"):
 
@@ -112,20 +67,11 @@ class Fracti(object):
         return instance
 
 
-
-
     def search_db(label, property, value):
-        """ search for a node based on label and property""" #not in use
+        """ search for nodes based on label and property""" #not in use
         sel = selector.select(label, property=value)
         return list(sel)
 
-
-    def content(self,content):
-        """ Method to change content and commit to database directly, still deciding if needed"""
-        pass
-
-    def acess_keys(self):
-        pass
 
     def new_label(self, label):
         self.other_labels.append(label)
@@ -136,13 +82,20 @@ class Fracti(object):
         return Fracti.find_db(label=label, id_=self.id_)
 
     def insert_db(self,label="Fracti"):
-        if not self.fetch_db():
+        """ inserts fracti oject as node in database, Returns True for sucess, False for failure"""
+        if self.fetch_db() is None:
             fracti = Node(label, id=self.id_, content=self.content, name=self.name, acess_keys=self.acess_keys,timestamp=self.timestamp,creator_id=self.creator_id)
             for label in self.other_labels:
                 fracti.add_label(label)
             graph.create(fracti)
+
         else:
             return self.fetch_db()
+
+
+
+
+
 
 
     def update_db(self):
@@ -154,13 +107,16 @@ class Fracti(object):
                 fracti.add_label(label)
         graph.begin(autocommit=True)
         graph.push(fracti)
-        return fracti
+        return True
 
     def delete_db(self):
         """Delete node from database, if not actor and no relationships"""
-        fracti = self.fetch_db()
-        graph.delete(fracti)
-
+        try:
+            fracti = self.fetch_db()
+            graph.delete(fracti)
+            return True
+        except:
+            return False
 
 
 
@@ -172,13 +128,12 @@ class Actor(Fracti):
 
     def connect_extension(self,extension_id):
         actor = self.fetch_db()
-        ext_main_node = Fracti.find_db(extension_id, label="Fracti")
+        ext_main_node = Fracti.find_db(extension_id)
         ex_class = Extension.extensions_index[extension_id]
         ex_inst = ex_class.initialize_instance_node(self.id_)
-
         actor_extension = Relationship(ex_inst,"OF",actor)
-        graph.merge(actor_extension)
-        return Fracti.get_instance(node=ex_inst)
+        graph.create(actor_extension)
+        return Fracti.get_instance(ex_inst)
 
 
 
@@ -187,45 +142,42 @@ class Extension(Fracti):
     extensions_index = {}
     extension_id = 0
 
-    def __init__(self, creator_id, name="", content="Basic Extension",other_labels=["Extension"]):
-        super(Extension, self).__init__(creator_id, name, content, other_labels)
+    def __init__(self, creator_id, name="", content="Extension"):
+        super(Extension, self).__init__(creator_id , name, content, id_=str(uuid.uuid4()), other_labels=["Extension"])
 
     @classmethod
-    def initialize_main_node(cls,label="Fracti", creator_id=1, content="Extension",acess_keys="public-rw"):
-        extension = Node(label, id=cls.extension_id, content=content, acess_keys=acess_keys,timestamp=time.time(),creator_id=creator_id)
-        extension.add_label(cls.__name__)
-        extension.add_label("Extension")
-        Extension.extensions_index[cls.extension_id] = cls
-        graph.create(extension)
-        return extension
-
-    @classmethod
-    def initialize_instance_node(cls,actor_id, label="Fracti", content="Extension",acess_keys="public-rw"):
-        id_ = actor_id + "-" + str(cls.extension_id)
-        extension = Node(label, id=id_, content=content, acess_keys=acess_keys,timestamp=time.time(),creator_id=actor_id)
-        extension.add_label(cls.__name__)
-        extension.add_label("Extension")
-        main_node = Fracti.find_db(cls.extension_id)
-        rel = Relationship(extension,"OF",main_node)
-        graph.create(extension)
-        graph.merge(rel)
-        return extension
-
-    @classmethod
-    def get_instance(cls,id_=None, node=None):
-        """given a node object or an ID, creates a instance of the class to manage methods"""
-        if node:
-            fracti = node
+    def initialize_main_node(cls, creator_id="Fractopia", content="Extension",acess_keys="public-rw"):
+        """ Creates extension main node on database an ads to the index, returns node"""
+        if Fracti.find_db(cls.extension_id) is None:
+            extension = Extension(creator_id)
+            extension.id_ = cls.extension_id
+            extension.name = cls.__name__
+            extension.other_labels
+            extension.other_labels.append("Extension")
+            extension.other_labels.append(cls.__name__)
+            extension.insert_db()
+            Extension.extensions_index[cls.extension_id] = cls
+            return extension.fetch_db()
         else:
-            fracti = Fracti.find_db(id_)
+            Extension.extensions_index[cls.extension_id] = cls
+            return Fracti.find_db(cls.extension_id)
 
 
-
-        instance = cls.__init__(creator_id=fracti["creator_id"],id_=fracti["id"],name= fracti["name"],
-                            other_labels = fracti["other_labels"], content = fracti["content"],
-                            acess_keys = fracti["acess_keys"], timestamp = fracti["timestamp"])
-
-        return instance
+    @classmethod
+    def initialize_instance_node(cls,actor_id, content="Extension",acess_keys="public-rw"):
+        """Initilizes instance node with default configs and inboxes, returns node"""
+        id_ext = actor_id + "-" + str(cls.extension_id)
+        main_node = cls.initialize_main_node()
+        extension = cls(actor_id)
+        extension.id_ = id_ext
+        extension.other_labels.append(cls.__name__)
+        extension.name = cls.__name__
+        extension.insert_db()
+        inst_node = extension.fetch_db()
+        extension.initial_config()
+        rel = Relationship(inst_node,"OF",main_node)
+        graph.create(rel)
+        return inst_node
 
 
 
@@ -233,61 +185,160 @@ class Extension(Fracti):
 class BasicFractopus(Extension):
     """ Alows the most basic interaction with database, creating new fractis or editing, relationships, and managing acess_keys"""
 
-
     extension_id = 1
-
-
 
     def actor_node(self):
         return Fracti.find_db(self.id_[:36])
 
-    def create_fracti(self, type_, content, name="", permissions="public-rw"):
+    def normalize_input(self, fracti):
+        """Cheks type for fracti input (node, id or class instance) and returns class instance if possible"""
+        if not isinstance(fracti, (Fracti, Node, str, int)):
+            raise TypeError("Not a suported fracti input type")
+        elif isinstance(fracti, Node):
+            return Fracti.get_instance(fracti)
+        elif isinstance(fracti,(int,str)):
+            if Fracti.find_db(fracti) is None:
+                    raise Exception("Wrong id format or not existent node in db")
+            else:
+                fracti = Fracti.get_instance(fracti)
+
+        return fracti
+
+
+
+
+    def initial_config(self):
+        """Create default inboxes and other configurations"""
+        inbox = self.create_fracti("Directory","Public inbox for receiving other user`s posts","Public inbox")
+        inbox_inst = Fracti.get_instance(inbox)
+        inbox_inst.insert_db()
+        rel = Relationship(inbox, "OF", self.fetch_db())
+        rel2 = Relationship(inbox, "IN", self.fetch_db())
+        graph.create(rel)
+        graph.create(rel2)
+
+    def check_permissions(self, fracti):
+        """Checks if acess_keys matches with fracti"""
+        #fracti = self.normalize_input(fracti)
+        #if fracti.acess_keys is self.key_ring:
+        #    return True
+        #else:
+        #    return False
+        # need to create keyring
+        return fracti
+
+    def get_fracti(self, fracti):
+        if self.check_permissions(fracti):
+            return self.normalize_input(fracti)
+        else:
+            return False
+
+
+    def inbox(self,key="Public inbox"):
+        inbox = None
+        for rel in graph.match(end_node=self.fetch_db(),rel_type="OF"):
+            if rel.start_node().properties["name"] == key:
+                inbox = rel.start_node()
+
+        return inbox
+
+
+
+    def create_fracti(self, type_, content, name="No name", permissions="public-rw"):
+        """creates a fracti associated to the actor (with CREATED relationship), returns
+        fracti node object"""
+
         fracti = Fracti(self.id_, content=content, name=name, acess_keys=permissions)
         fracti.other_labels.append(type_) #always append labels
         fracti.insert_db()
         fracti = fracti.fetch_db()
-        rel = Relationship(self.actor_node(), "CREATED", fracti)
+        rel = Relationship(self.fetch_db(), "CREATED", fracti)
         graph.create(rel)
         return fracti
 
-    def create_content(self, content, name="", permissions="public-rw"):
-        self.create_fracti( "Content", content, name, permissions)
+    def edit_fracti(self, fracti, content=None,name=None,acess_keys=None):
+        """Get a fracti and edit it. Returns True/False for Sucess/Failure"""
+        fracti = self.get_fracti(fracti)
+        if fracti:
+            if content:
+                fracti.content = content
+            if name:
+                fracti.name = name
+            if acess_keys:
+                fracti.acess_keys = acess_keys
+            fracti.update_db()
+            return True
+        else:
+            return false
 
-    def create_directory(self, content, name="", permissions="public-rw"):
-        self.create_fracti("Directory", content, name, permissions)
+    def delete_fracti(self, fracti):
+        fracti = self.get_fracti(fracti)
+        if fracti:
+            try:
+                fracti.delete_db()
+                return True
+            except:
+                return False
+        else:
+            return False
+
+
+    def post_fracti(self, fracti, destination):
+
+        actor = self.fetch_db()
+        fracti = self.normalize_input(fracti)
+        fracti = fracti.fetch_db()
+        destination = self.normalize_input(destination)
+        destination = destination.fetch_db()
+        post = Relationship(actor,"POSTED", fracti)
+        to = Relationship(fracti,"TO",destination)
+        is_in = Relationship(fracti,"IS_IN",destination)
+        context = graph.begin()
+        context.create(post)
+        context.create(to)
+        context.create(is_in)
+        context.commit()
+
+    def tag_fracti(self,fracti, word=None,other_tag=None):
+        """creates tag if not exist and create Relationship"""
+        tagged = self.normalize_input(fracti)
+        tagged_node = tagged.fetch_db()
+
+    def search_fracti(self):
+        pass
+
+    def see_content(self, directory):
+        pass
+
+    def see_inside(self, fracti):
+        """Returns all fractis in a fracti(usually a directory), None if none is found"""
+        fracti = self.get_fracti(fracti)
+        fracti_node = fracti.fetch_db()
+        found_nodes = []
+        for rel in graph.match(end_node=fracti_node, rel_type="IN"):
+            found_nodes.append(rel.start_node(apply))
+
+
+        if len(found_nodes) > 0:
+            return found_nodes
+        else:
+            return None
+
+
+    def share_fracti(self):
+        pass
 
 
     def create_relation(self):
-        pass
-
-    def delete_fracti(self):
         pass
 
     def delete_relation(self):
         pass
 
 
-    def edit_fracti(self):
-        pass
-
-    def insert_acess_key(self):
-        pass
-
-
-class TagerFractopus():
-    """ Mediator for creating tag relationships"""
 
 
 
-
-
-class Content(Fracti):
-    """ a fracti containing a piece of data"""
-    pass
-
-class Directory(Fracti):
-    """ a fracti that links to other fractis as a way of organizing contents"""
-    pass
 
 
 
