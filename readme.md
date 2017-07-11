@@ -7,6 +7,7 @@ The main idea is the user interacts with one or more actors, which by its turn i
 
 
 Next in line:
+
 * Clean code
 * BasicFractopus - Basic basic CRUD functionalities, tagging and basic social functionalites like sharing, posting and creates a "inbox directory" to receive from other actors .
 * Keyring - Manage fracti read/write permissions
