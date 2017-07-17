@@ -2,7 +2,7 @@ from fractopia import *
 
 
 
-graph = Graph(password="plaintextpwd")
+graph = Graph()
 selector = NodeSelector(graph)
 
 

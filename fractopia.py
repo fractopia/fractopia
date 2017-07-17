@@ -6,7 +6,7 @@ import uuid
 import inspect
 
 
-graph = Graph(password="plaintextpwd")
+graph = Graph()
 selector = NodeSelector(graph)
 
 
@@ -119,17 +119,29 @@ class Actor(Fracti):
     def __init__(self, creator_id, content="", name="", other_labels=None):
         super(Actor, self).__init__(creator_id, content, name, other_labels)
 
-
-
+    @classmethod
+    def create_actor(cls, creator_id, content="", name=""):
+        actor = cls(creator_id, content, name)
+        actor.other_labels.append("Actor")
+        actor.insert_db()
+        return actor
 
     def connect_extension(self,extension_id):
-        actor = self.fetch_db()
-        ext_main_node = Fracti.find_db(extension_id)
+
         ex_class = Extension.extensions_index[extension_id]
-        ex_inst = ex_class.initialize_instance_node(self.id_)
-        actor_extension = Relationship(ex_inst,"OF",actor)
-        graph.create(actor_extension)
-        return Fracti.get_instance(ex_inst)
+        if not Extension.find_db(self.id_ + "-" + str(extension_id)):
+            actor = self.fetch_db()
+            ext_main_node = Fracti.find_db(extension_id)
+
+            ex_inst = ex_class.initialize_instance_node(self.id_)
+            actor_extension = Relationship(ex_inst,"OF",actor)
+            graph.create(actor_extension)
+            return Fracti.get_instance(ex_inst)
+        else:
+
+            ex_nd = Extension.find_db(self.id_ + "-" + str(extension_id))
+            instance = ex_class.get_instance(ex_nd)
+            return instance
 
 
 class Extension(Fracti):
